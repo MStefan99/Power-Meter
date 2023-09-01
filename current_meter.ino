@@ -72,6 +72,10 @@ void loop() {
   tft.print("Shunt Voltage: "); tft.print(shuntVoltage); tft.println(" mV    ");
   tft.print("Load Voltage:  "); tft.print(loadVoltage); tft.println(" V    ");
 
+  if (busVoltage < 0.1) {busVoltage = 0;}
+  if (current < 1.0) {current = 0;}
+  if (power < 1.0) {power = 0;}
+
   prev.push_back({
     .busVoltage = busVoltage,
     .current = current,
