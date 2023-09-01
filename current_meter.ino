@@ -58,7 +58,7 @@ void loop() {
   tft.setCursor(0, 0);
   tft.setTextSize(2);
   tft.setTextColor(0xffe0);
-  tft.print("Current monitor");
+  tft.print("Power meter");
 
   tft.setCursor(0, 24);
   tft.setTextSize(1);
@@ -73,24 +73,38 @@ void loop() {
   tft.print("Load Voltage:  "); tft.print(loadVoltage); tft.println(" V    ");
 
   prev.push_back({
-      .busVoltage = busVoltage,
-      .current = std::floor(current),
-      .power = std::floor(power)
-    });
-  if (prev.size() > 40) {
+    .busVoltage = busVoltage,
+    .current = current,
+    .power = power
+  });
+  if (prev.size() > 41) {
     prev.pop_front();
   }
 
-  tft.fillRect(0, 72, 240, 63, 0);
+  float maxBusVoltage = 0;
+  float maxCurrent = 0;
+  float maxPower = 0;
+
+  for (const auto& p : prev) {
+    if (p.busVoltage > maxBusVoltage) {maxBusVoltage = p.busVoltage;}
+    if (p.current > maxCurrent) {maxCurrent = p.current;}
+    if (p.power > maxPower) {maxPower = p.power;}
+  }
+
+  float busVoltageScale = 70 / maxBusVoltage;
+  float currentScale = 70 / maxCurrent;
+  float powerScale = 70 / maxPower;
+
+  tft.fillRect(0, 64, 240, 71, 0);
   for (uint8_t i {0}; i < prev.size() - 1; ++i) {
-    tft.drawLine(6 * i, 135 - prev[i - 1].busVoltage * 8, 6 * (i + 1), 135 - prev[i].busVoltage * 8, 0xf800);
-    tft.drawLine(6 * i, 135 - prev[i - 1].current / 9, 6 * (i + 1), 135 - prev[i].current / 9, 0x07e0);
-    tft.drawLine(6 * i, 135 - prev[i - 1].power / 80, 6 * (i + 1), 135 - prev[i].power / 80, 0xffe0);
+    tft.drawLine(6 * i, 135 - prev[i].busVoltage * busVoltageScale, 6 * (i + 1), 135 - prev[i + 1].busVoltage * busVoltageScale, 0xf800);
+    tft.drawLine(6 * i, 135 - prev[i].current * currentScale, 6 * (i + 1), 135 - prev[i + 1].current * currentScale, 0x07e0);
+    tft.drawLine(6 * i, 135 - prev[i].power * powerScale, 6 * (i + 1), 135 - prev[i + 1].power * powerScale, 0xffe0);
   }
 
   delay(20);
   
-  if (millis() - lastClear > 10000 || millis() < lastClear) {
+  if (millis() - lastClear > 20000 || millis() < lastClear) {
     tft.fillScreen(0);
     lastClear = millis();
   }
