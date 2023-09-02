@@ -15,6 +15,8 @@ typedef struct {
 
 std::deque<measurement> prev;
 uint32_t lastClear {0};
+constexpr uint8_t memorySize {80};
+constexpr uint8_t divisionWidth {240 / memorySize};
 
 
 void setup() {
@@ -81,7 +83,7 @@ void loop() {
     .current = current,
     .power = power
   });
-  if (prev.size() > 41) {
+  if (prev.size() > memorySize + 1) {
     prev.pop_front();
   }
 
@@ -99,16 +101,16 @@ void loop() {
   float currentScale = 70 / maxCurrent;
   float powerScale = 70 / maxPower;
 
-  tft.fillRect(0, 64, 240, 71, 0);
   for (uint8_t i {0}; i < prev.size() - 1; ++i) {
-    tft.drawLine(6 * i, 135 - prev[i].busVoltage * busVoltageScale, 6 * (i + 1), 135 - prev[i + 1].busVoltage * busVoltageScale, 0xf800);
-    tft.drawLine(6 * i, 135 - prev[i].current * currentScale, 6 * (i + 1), 135 - prev[i + 1].current * currentScale, 0x07e0);
-    tft.drawLine(6 * i, 135 - prev[i].power * powerScale, 6 * (i + 1), 135 - prev[i + 1].power * powerScale, 0xffe0);
+    tft.fillRect(divisionWidth * i, 64, divisionWidth, 71, 0);
+    tft.drawLine(divisionWidth * i, 135 - prev[i].busVoltage * busVoltageScale, divisionWidth * (i + 1), 135 - prev[i + 1].busVoltage * busVoltageScale, 0xf800);
+    tft.drawLine(divisionWidth * i, 135 - prev[i].current * currentScale, divisionWidth * (i + 1), 135 - prev[i + 1].current * currentScale, 0x07e0);
+    tft.drawLine(divisionWidth * i, 135 - prev[i].power * powerScale, divisionWidth * (i + 1), 135 - prev[i + 1].power * powerScale, 0xffe0);
   }
-
-  delay(20);
+ 
+  delay(5);
   
-  if (millis() - lastClear > 20000 || millis() < lastClear) {
+  if (millis() - lastClear > 60000 || millis() < lastClear) {
     tft.fillScreen(0);
     lastClear = millis();
   }
