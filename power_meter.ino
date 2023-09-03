@@ -55,25 +55,8 @@ void loop() {
   busVoltage = ina219.getBusVoltage_V();
   current = ina219.getCurrent_mA();
   power = ina219.getPower_mW();
-  loadVoltage = busVoltage + (shuntVoltage / 1000);  
+  loadVoltage = busVoltage + (shuntVoltage / 1000);
   
-  tft.setCursor(0, 0);
-  tft.setTextSize(2);
-  tft.setTextColor(0xffe0);
-  tft.print("Power meter");
-
-  tft.setCursor(0, 24);
-  tft.setTextSize(1);
-  tft.setTextColor(0xf800, 0);
-  tft.print("Bus Voltage:   "); tft.print(busVoltage); tft.println(" V    ");
-  tft.setTextColor(0x07e0, 0);
-  tft.print("Current:       "); tft.print(current); tft.println(" mA    ");
-  tft.setTextColor(0xffe0, 0);
-  tft.print("Power:         "); tft.print(power); tft.println(" mW    ");
-  tft.setTextColor(0xffff, 0);
-  tft.print("Shunt Voltage: "); tft.print(shuntVoltage); tft.println(" mV    ");
-  tft.print("Load Voltage:  "); tft.print(loadVoltage); tft.println(" V    ");
-
   if (busVoltage < 0.1) {busVoltage = 0;}
   if (current < 1.0) {current = 0;}
   if (power < 1.0) {power = 0;}
@@ -90,12 +73,37 @@ void loop() {
   float maxBusVoltage = 0;
   float maxCurrent = 0;
   float maxPower = 0;
+  float avgBusVoltage = 0;
+  float avgCurrent = 0;
+  float avgPower = 0;
 
-  for (const auto& p : prev) {
-    if (p.busVoltage > maxBusVoltage) {maxBusVoltage = p.busVoltage;}
-    if (p.current > maxCurrent) {maxCurrent = p.current;}
-    if (p.power > maxPower) {maxPower = p.power;}
+  for (uint8_t i {0}; i < prev.size(); ++i) {
+    if (prev[i].busVoltage > maxBusVoltage) {maxBusVoltage = prev[i].busVoltage;}
+    if (prev[i].current > maxCurrent) {maxCurrent = prev[i].current;}
+    if (prev[i].power > maxPower) {maxPower = prev[i].power;}
+
+    avgBusVoltage += (prev[i].busVoltage - avgBusVoltage) / (i + 1);
+    avgCurrent += (prev[i].current - avgCurrent) / (i + 1);
+    avgPower += (prev[i].power - avgPower) / (i + 1);
   }
+  
+  tft.setCursor(0, 0);
+  tft.setTextSize(2);
+  tft.setTextColor(0xffe0);
+  tft.print("Power meter");
+
+  tft.setCursor(0, 24);
+  tft.setTextSize(1);
+  tft.setTextColor(0xf800, 0);
+  tft.print("Bus:     "); tft.print(busVoltage); tft.print(" V. Avg: "); tft.print(avgBusVoltage); tft.println(" V    ");
+  tft.setTextColor(0x07e0, 0);
+  tft.print("Current: "); tft.print(current); tft.print(" mA. Avg: "); tft.print(avgCurrent); tft.println(" mA    ");
+  tft.setTextColor(0xffe0, 0);
+  tft.print("Power:   "); tft.print(power); tft.print(" mW. Avg: "); tft.print(avgPower); tft.println(" mW    ");
+  tft.setTextColor(0xffff, 0);
+  tft.print("Shunt:   "); tft.print(shuntVoltage); tft.println(" mV    ");
+  tft.print("Load:    "); tft.print(loadVoltage); tft.println(" V    ");
+
 
   float busVoltageScale = 70 / maxBusVoltage;
   float currentScale = 70 / maxCurrent;
