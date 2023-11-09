@@ -4,11 +4,13 @@
 #include <SPI.h>
 #include <deque>
 
+// Pin numbers
+static constexpr uint8_t BUTTON {0};
+
 Adafruit_INA219 ina219;
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+// Display resolution: 240x135
 
-
-static constexpr uint8_t BUTTON {0};
 
 typedef struct {
   float busVoltage;
@@ -18,6 +20,13 @@ typedef struct {
   float loadVoltage;
 } measurement;
 
+typedef struct {
+  uint16_t bgColor;
+  uint16_t fillColor;
+  uint16_t labelColor;
+  uint16_t valueColor;
+} colors;
+
 enum MODE : uint8_t {
   Current,
   Voltage,
@@ -26,58 +35,181 @@ enum MODE : uint8_t {
 };
 
 
-std::deque<measurement> prev;
-uint8_t mode {MODE::Detailed};
-uint32_t lastClear {0};
-bool latch {false};
-constexpr uint8_t memorySize {80};
-constexpr uint8_t divisionWidth {240 / memorySize};
+static std::deque<measurement> prev;
+static uint8_t mode {MODE::Current};
+static uint32_t lastClear {0};
+static bool latch {false};
+static constexpr uint8_t memorySize {80};
+static constexpr uint8_t divisionWidth {240 / memorySize};
+static constexpr colors currentColors {
+  .bgColor = 0x2226,
+  .fillColor = 0x3d6e,
+  .labelColor = 0x2c4a,
+  .valueColor = 0xbff9
+};
+static constexpr colors voltageColors {
+  .bgColor = 0x4144,
+  .fillColor = 0xaa87,
+  .labelColor = 0x89a5,
+  .valueColor = 0xfeb8
+};
+static constexpr colors powerColors {
+  .bgColor = 0x4204,
+  .fillColor = 0xad07,
+  .labelColor = 0x8bc5,
+  .valueColor = 0xff97
+};
 
 
 void setupCurrent() {
-  tft.fillScreen(0xffcc);
-  tft.setCursor(0, 0);
-  tft.setTextSize(3);
-  tft.setTextColor(0xa500);
-  tft.print("Current");
+  tft.fillScreen(currentColors.bgColor);
 }
 
 
 void setupVoltage() {
-  tft.setCursor(0, 0);
-  tft.setTextSize(1);
-  tft.setTextColor(0xf800, 0);
-  tft.print("Voltage");
+  tft.fillScreen(voltageColors.bgColor);
 }
 
 
 void setupPower() {
-  tft.setCursor(0, 0);
-  tft.setTextSize(2);
-  tft.setTextColor(0xffe0, 0);
-  tft.print("Power");
+  tft.fillScreen(voltageColors.bgColor);
 }
 
 
-void setupDetailed() {}
+void setupDetailed() {
+  tft.fillScreen(0);
+
+  tft.setCursor(0, 0);
+  tft.setTextSize(3);
+  tft.setTextColor(0xffe0);
+  tft.print("Power meter");
+
+}
 
 
-void drawCurrent(const measurement& max, const measurement& avg) {}
+void drawCurrent(const measurement& max, const measurement& avg) {
+  float scale = 135 / max.current;
+
+  for (uint8_t i {0}; i < prev.size() - 1; ++i) {
+    bool up = prev[i].current < prev[i + 1].current;
+    uint8_t minCoord = 135 - (up? prev[i].current : prev[i + 1].current) * scale;
+
+    tft.fillRect(divisionWidth * i, 0,
+      divisionWidth, minCoord,
+      currentColors.bgColor);
+
+    if (max.current) {
+      tft.fillRect(divisionWidth * i, minCoord,
+        divisionWidth, 135, 
+        currentColors.fillColor);
+      
+      tft.fillTriangle(divisionWidth * i, 135 - prev[i].current * scale, 
+        divisionWidth * (i + 1), 135 - prev[i + 1].current * scale,
+        up? divisionWidth * (i + 1) : divisionWidth * i, minCoord,
+        currentColors.fillColor);
+    }
+
+    if ((i % 8) == 0) {
+      tft.setTextSize(5);
+
+      tft.setCursor(16, 80);
+      tft.setTextColor(currentColors.labelColor);
+      tft.print("Current");
+
+      tft.setCursor(16, 20);
+      tft.setTextColor(currentColors.valueColor);
+      if (avg.current < 100) {
+        tft.print(avg.current);
+      } else {
+        tft.print(static_cast<int>(avg.current));
+      }
+      tft.print("mA ");
+    }
+  }
+}
 
 
-void drawVoltage(const measurement& max, const measurement& avg) {}
+void drawVoltage(const measurement& max, const measurement& avg) {
+  float scale = 135 / max.busVoltage;
+
+  for (uint8_t i {0}; i < prev.size() - 1; ++i) {
+    bool up = prev[i].busVoltage < prev[i + 1].busVoltage;
+    uint8_t minCoord = 135 - (up? prev[i].busVoltage : prev[i + 1].busVoltage) * scale;
+
+    tft.fillRect(divisionWidth * i, 0,
+      divisionWidth, minCoord,
+      voltageColors.bgColor);
+
+    if (max.busVoltage) {
+      tft.fillRect(divisionWidth * i, minCoord,
+        divisionWidth, 135, 
+        voltageColors.fillColor);
+      
+      tft.fillTriangle(divisionWidth * i, 135 - prev[i].busVoltage * scale, 
+        divisionWidth * (i + 1), 135 - prev[i + 1].busVoltage * scale,
+        up? divisionWidth * (i + 1) : divisionWidth * i, minCoord,
+        voltageColors.fillColor);
+    }
+
+    if ((i % 8) == 0) {
+      tft.setTextSize(5);
+
+      tft.setCursor(16, 80);
+      tft.setTextColor(voltageColors.labelColor);
+      tft.print("Voltage");
+
+      tft.setCursor(16, 20);
+      tft.setTextColor(voltageColors.valueColor);
+      tft.print(avg.busVoltage); tft.print("V ");
+    }
+  }
+}
 
 
-void drawPower(const measurement& max, const measurement& avg) {}
+void drawPower(const measurement& max, const measurement& avg) {
+  float scale = 135 / max.power;
+
+  for (uint8_t i {0}; i < prev.size() - 1; ++i) {
+    bool up = prev[i].power < prev[i + 1].power;
+    uint8_t minCoord = 135 - (up? prev[i].power : prev[i + 1].power) * scale;
+
+    tft.fillRect(divisionWidth * i, 0,
+      divisionWidth, minCoord,
+      powerColors.bgColor);
+
+    if (max.power) {
+      tft.fillRect(divisionWidth * i, minCoord,
+        divisionWidth, 135, 
+        powerColors.fillColor);
+      
+      tft.fillTriangle(divisionWidth * i, 135 - prev[i].power * scale, 
+        divisionWidth * (i + 1), 135 - prev[i + 1].power * scale,
+        up? divisionWidth * (i + 1) : divisionWidth * i, minCoord,
+        powerColors.fillColor);
+    }
+
+    if ((i % 8) == 0) {
+      tft.setTextSize(5);
+
+      tft.setCursor(16, 80);
+      tft.setTextColor(powerColors.labelColor);
+      tft.print("Power");
+
+      tft.setCursor(16, 20);
+      tft.setTextColor(powerColors.valueColor);
+      if (avg.power < 100) {
+        tft.print(avg.power);
+      } else {
+        tft.print(static_cast<int>(avg.power));
+      }
+      tft.print("mW ");
+    }
+  }
+}
 
 
 void drawDetailed(const measurement& max, const measurement& avg) {
   auto last {prev.back()};
-
-  tft.setCursor(0, 0);
-  tft.setTextSize(2);
-  tft.setTextColor(0xffe0);
-  tft.print("Power meter");
 
   tft.setCursor(0, 24);
   tft.setTextSize(1);
@@ -98,9 +230,15 @@ void drawDetailed(const measurement& max, const measurement& avg) {
 
   for (uint8_t i {0}; i < prev.size() - 1; ++i) {
     tft.fillRect(divisionWidth * i, 64, divisionWidth, 71, 0);
-    tft.drawLine(divisionWidth * i, 135 - prev[i].busVoltage * busVoltageScale, divisionWidth * (i + 1), 135 - prev[i + 1].busVoltage * busVoltageScale, 0xf800);
-    tft.drawLine(divisionWidth * i, 135 - prev[i].current * currentScale, divisionWidth * (i + 1), 135 - prev[i + 1].current * currentScale, 0x07e0);
-    tft.drawLine(divisionWidth * i, 135 - prev[i].power * powerScale, divisionWidth * (i + 1), 135 - prev[i + 1].power * powerScale, 0xffe0);
+    tft.drawLine(divisionWidth * i, 135 - prev[i].busVoltage * busVoltageScale,
+      divisionWidth * (i + 1), 135 - prev[i + 1].busVoltage * busVoltageScale,
+      0xf800);
+    tft.drawLine(divisionWidth * i, 135 - prev[i].current * currentScale,
+      divisionWidth * (i + 1), 135 - prev[i + 1].current * currentScale,
+      0x07e0);
+    tft.drawLine(divisionWidth * i, 135 - prev[i].power * powerScale,
+      divisionWidth * (i + 1), 135 - prev[i + 1].power * powerScale,
+      0xffe0);
   }
 }
 
@@ -133,6 +271,7 @@ void setup() {
   }
 
   tft.setTextSize(1);
+  setupFunctions[mode]();
 }
 
 void loop() {
@@ -142,8 +281,7 @@ void loop() {
     if (mode > 3) {
       mode = 0;
     }
-    tft.fillScreen(0);
-    setupCurrent(); // Should be setupFunctions[mode]() but doesn't work yet
+    setupFunctions[mode]();
   } else if (digitalRead(BUTTON) && latch) {
     latch = false;
   }
@@ -165,8 +303,8 @@ void loop() {
     prev.pop_front();
   }
   
-  measurement max;
-  measurement avg;
+  measurement max {};
+  measurement avg {};
 
   for (uint8_t i {0}; i < prev.size(); ++i) {
     if (prev[i].busVoltage > max.busVoltage) {max.busVoltage = prev[i].busVoltage;}
@@ -183,7 +321,7 @@ void loop() {
   delay(5);
   
   if (millis() - lastClear > 60000 || millis() < lastClear) {
-    tft.fillScreen(0);
+    setupFunctions[mode]();
     lastClear = millis();
   }
 }
