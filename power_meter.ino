@@ -72,7 +72,7 @@ void setupVoltage() {
 
 
 void setupPower() {
-  tft.fillScreen(voltageColors.bgColor);
+  tft.fillScreen(powerColors.bgColor);
 }
 
 
@@ -220,8 +220,8 @@ void drawDetailed(const measurement& max, const measurement& avg) {
   tft.setTextColor(0xffe0, 0);
   tft.print("Power:   "); tft.print(last.power); tft.print(" mW. Avg: "); tft.print(avg.power); tft.println(" mW    ");
   tft.setTextColor(0xffff, 0);
-  tft.print("Shunt:   "); tft.print(avg.shuntVoltage); tft.println(" mV    ");
-  tft.print("Load:    "); tft.print(avg.loadVoltage); tft.println(" V    ");
+  tft.print("Shunt:   "); tft.print(last.shuntVoltage); tft.print(" mV. Avg: "); tft.print(avg.shuntVoltage); tft.println(" mV    ");
+  tft.print("Load:    "); tft.print(last.loadVoltage); tft.print(" V. Avg: "); tft.print(avg.loadVoltage); tft.println(" V    ");
 
 
   float busVoltageScale = 70 / max.busVoltage;
@@ -295,8 +295,11 @@ void loop() {
   curr.loadVoltage = curr.busVoltage + (curr.shuntVoltage / 1000);
   
   if (curr.busVoltage < 0.1) {curr.busVoltage = 0;}
-  if (curr.current < 1.0) {curr.current = 0;}
-  if (curr.power < 1.0) {curr.power = 0;}
+  if (curr.current < 0.5) {curr.current = 0;}
+  if (curr.power < 0.5) {curr.power = 0;}
+  if (curr.shuntVoltage < 0.02) {curr.shuntVoltage = 0;}
+  if (curr.loadVoltage < 0.1) {curr.loadVoltage = 0;}
+  Serial.println(curr.loadVoltage);
 
   prev.push_back(curr);
   if (prev.size() > memorySize + 1) {
@@ -310,10 +313,14 @@ void loop() {
     if (prev[i].busVoltage > max.busVoltage) {max.busVoltage = prev[i].busVoltage;}
     if (prev[i].current > max.current) {max.current = prev[i].current;}
     if (prev[i].power > max.power) {max.power = prev[i].power;}
+    if (prev[i].shuntVoltage > max.shuntVoltage) {max.shuntVoltage = prev[i].shuntVoltage;}
+    if (prev[i].loadVoltage > max.loadVoltage) {max.loadVoltage = prev[i].loadVoltage;}
 
     avg.busVoltage += (prev[i].busVoltage - avg.busVoltage) / (i + 1);
     avg.current += (prev[i].current - avg.current) / (i + 1);
     avg.power += (prev[i].power - avg.power) / (i + 1);
+    avg.shuntVoltage += (prev[i].shuntVoltage - avg.shuntVoltage) / (i + 1);
+    avg.loadVoltage += (prev[i].loadVoltage - avg.loadVoltage) / (i + 1);
   }
 
   drawFunctions[mode](max, avg);
