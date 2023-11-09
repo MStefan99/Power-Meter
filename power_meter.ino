@@ -119,11 +119,12 @@ void drawCurrent(const measurement& max, const measurement& avg) {
       tft.setCursor(16, 20);
       tft.setTextColor(currentColors.valueColor);
       if (avg.current < 100) {
-        tft.print(avg.current);
+        tft.print(avg.current); tft.print("mA");
+      } else if (avg.current > 1000) {
+        tft.print(avg.current * 0.001); tft.print("A");
       } else {
-        tft.print(static_cast<int>(avg.current));
+        tft.print(static_cast<int>(avg.current)); tft.print("mA");
       }
-      tft.print("mA ");
     }
   }
 }
@@ -160,7 +161,13 @@ void drawVoltage(const measurement& max, const measurement& avg) {
 
       tft.setCursor(16, 20);
       tft.setTextColor(voltageColors.valueColor);
-      tft.print(avg.busVoltage); tft.print("V ");
+      if (avg.busVoltage < 0.1) {
+        tft.print(avg.busVoltage * 1000); tft.print("mV");
+      } else if (avg.busVoltage < 1) {
+        tft.print(static_cast<int>(avg.busVoltage * 1000)); tft.print("mV");
+      } else {
+        tft.print(avg.busVoltage); tft.print("V");
+      }
     }
   }
 }
@@ -198,11 +205,12 @@ void drawPower(const measurement& max, const measurement& avg) {
       tft.setCursor(16, 20);
       tft.setTextColor(powerColors.valueColor);
       if (avg.power < 100) {
-        tft.print(avg.power);
+        tft.print(avg.power); tft.print("mW");
+      } else if (avg.power > 1000) {
+        tft.print(avg.power * 0.001); tft.print("W");
       } else {
-        tft.print(static_cast<int>(avg.power));
+        tft.print(static_cast<int>(avg.power)); tft.print("mW");
       }
-      tft.print("mW ");
     }
   }
 }
@@ -294,11 +302,11 @@ void loop() {
   };
   curr.loadVoltage = curr.busVoltage + (curr.shuntVoltage / 1000);
   
-  if (curr.busVoltage < 0.1) {curr.busVoltage = 0;}
+  if (curr.busVoltage < 0.05) {curr.busVoltage = 0;}
   if (curr.current < 0.5) {curr.current = 0;}
   if (curr.power < 0.5) {curr.power = 0;}
   if (curr.shuntVoltage < 0.02) {curr.shuntVoltage = 0;}
-  if (curr.loadVoltage < 0.1) {curr.loadVoltage = 0;}
+  if (curr.loadVoltage < 0.05) {curr.loadVoltage = 0;}
   Serial.println(curr.loadVoltage);
 
   prev.push_back(curr);
