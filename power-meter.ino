@@ -2,6 +2,7 @@
 #include <Adafruit_INA219.h>
 #include <Adafruit_ST7789.h>  // Hardware-specific library for ST7789
 #include <deque>
+#include <Fonts/FreeSansBold24pt7b.h>
 #include <SPI.h>
 
 // Pin numbers
@@ -36,17 +37,20 @@ enum MODE : uint8_t {
 
 static std::deque<measurement> prev;
 static uint8_t                 mode {MODE::Current};
-static uint32_t                lastClear {0};
-static bool                    latch {false};
-constexpr static uint8_t       memorySize {80};
-constexpr static uint8_t       divisionWidth {240 / memorySize};
+
+static bool               latch {false};
+static uint32_t           buttonPressTime {0};
+constexpr static uint32_t longPressTime {2000};
+
+constexpr static uint8_t memorySize {80};
+constexpr static uint8_t divisionWidth {240 / memorySize};
+
 constexpr static colors
     currentColors {.bgColor = 0x2226, .fillColor = 0x3d6e, .labelColor = 0x2c4a, .valueColor = 0xbff9};
 constexpr static colors
     voltageColors {.bgColor = 0x4144, .fillColor = 0xaa87, .labelColor = 0x89a5, .valueColor = 0xfeb8};
 constexpr static colors
     powerColors {.bgColor = 0x4204, .fillColor = 0xad07, .labelColor = 0x8bc5, .valueColor = 0xff97};
-
 
 void drawCurrent(const measurement& max, const measurement& avg) {
 	float scale = 135 / max.current;
@@ -71,13 +75,13 @@ void drawCurrent(const measurement& max, const measurement& avg) {
 		}
 	}
 
-	canvas.setTextSize(5);
+	canvas.setFont(&FreeSansBold24pt7b);
 
-	canvas.setCursor(16, 80);
+	canvas.setCursor(16, 115);
 	canvas.setTextColor(currentColors.labelColor);
 	canvas.print("Current");
 
-	canvas.setCursor(16, 20);
+	canvas.setCursor(16, 50);
 	canvas.setTextColor(currentColors.valueColor);
 	if (avg.current < 100) {
 		canvas.print(avg.current);
@@ -114,13 +118,13 @@ void drawVoltage(const measurement& max, const measurement& avg) {
 		}
 	}
 
-	canvas.setTextSize(5);
+	canvas.setFont(&FreeSansBold24pt7b);
 
-	canvas.setCursor(16, 80);
+	canvas.setCursor(16, 115);
 	canvas.setTextColor(voltageColors.labelColor);
 	canvas.print("Voltage");
 
-	canvas.setCursor(16, 20);
+	canvas.setCursor(16, 50);
 	canvas.setTextColor(voltageColors.valueColor);
 	if (avg.busVoltage < 0.1) {
 		canvas.print(avg.busVoltage * 1000);
@@ -157,13 +161,13 @@ void drawPower(const measurement& max, const measurement& avg) {
 		}
 	}
 
-	canvas.setTextSize(5);
+	canvas.setFont(&FreeSansBold24pt7b);
 
-	canvas.setCursor(16, 80);
+	canvas.setCursor(16, 115);
 	canvas.setTextColor(powerColors.labelColor);
 	canvas.print("Power");
 
-	canvas.setCursor(16, 20);
+	canvas.setCursor(16, 50);
 	canvas.setTextColor(powerColors.valueColor);
 	if (avg.power < 100) {
 		canvas.print(avg.power);
@@ -179,7 +183,8 @@ void drawPower(const measurement& max, const measurement& avg) {
 
 void drawDetailed(const measurement& max, const measurement& avg) {
 	auto last {prev.back()};
-	
+
+	canvas.setFont();
 	canvas.fillScreen(0);
 
 	canvas.setCursor(0, 0);
@@ -254,12 +259,16 @@ void (*drawFunctions[])(const measurement& max, const measurement& avg) =
 
 void setup() {
 	Serial.begin(115200);
+
 	pinMode(TFT_BACKLITE, OUTPUT);
 	digitalWrite(TFT_BACKLITE, HIGH);
 	pinMode(TFT_I2C_POWER, OUTPUT);
 	digitalWrite(TFT_I2C_POWER, HIGH);
 	pinMode(BUTTON, INPUT_PULLUP);
+	pinMode(LED_BUILTIN, OUTPUT);
+
 	delay(10);
+
 	tft.init(135, 240);
 	tft.setRotation(3);
 	tft.fillScreen(0);
@@ -270,6 +279,7 @@ void setup() {
 		tft.setTextColor(0xf800);
 		tft.setTextSize(2);
 		tft.print("INA219 not connected");
+		digitalWrite(LED_BUILTIN, HIGH);
 
 		while (1) {
 			delay(1);
@@ -282,12 +292,18 @@ void setup() {
 void loop() {
 	if (!digitalRead(BUTTON) && !latch) {
 		latch = true;
-		++mode;
-		if (mode > 3) {
-			mode = 0;
-		}
+		buttonPressTime = millis();
 	} else if (digitalRead(BUTTON) && latch) {
 		latch = false;
+
+		if (mode < 3 || millis() - buttonPressTime < longPressTime) {
+			++mode;
+			if (mode > 2) {
+				mode = 0;
+			}
+		}
+	} else if (!digitalRead(BUTTON) && millis() - buttonPressTime > longPressTime) {
+		mode = 3;
 	}
 
 	measurement curr {
@@ -315,7 +331,17 @@ void loop() {
 	}
 
 	char str[128];
-	snprintf(str, 128, "Time: %d, Current: %5.2f, Voltage: %6.3f, Power: %6.3f, Shunt voltage: %6.3f, Load voltage: %6.3f\n", millis(), curr.current, curr.busVoltage, curr.power, curr.shuntVoltage, curr.loadVoltage);
+	snprintf(
+	    str,
+	    128,
+	    "Time: %lu, Current: %5.2f, Voltage: %6.3f, Power: %6.3f, Shunt voltage: %6.3f, Load voltage: %6.3f\n",
+	    millis(),
+	    curr.current,
+	    curr.busVoltage,
+	    curr.power,
+	    curr.shuntVoltage,
+	    curr.loadVoltage
+	);
 	Serial.print(str);
 
 	prev.push_back(curr);
