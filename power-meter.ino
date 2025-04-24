@@ -78,10 +78,10 @@ textCoords getTextCoords(Adafruit_GFX& gfx, const char* string, int16_t x, int16
 	return textCoords {x, y, x1, y1, w, h};
 }
 
-void drawCentered(Adafruit_GFX& gfx, const char* string, int16_t baseline, uint16_t color) {
-	canvas.setCursor((displayWidth - getTextCoords(canvas, string, 0, baseline).w) / 2, baseline);
-	canvas.setTextColor(color);
-	canvas.print(string);
+void printCentered(Adafruit_GFX& gfx, const char* string, int16_t baseline, uint16_t color) {
+	gfx.setCursor((displayWidth - getTextCoords(gfx, string, 0, baseline).w) / 2, baseline);
+	gfx.setTextColor(color);
+	gfx.print(string);
 }
 
 void drawCurrent(const measurement& max, const measurement& avg) {
@@ -108,7 +108,7 @@ void drawCurrent(const measurement& max, const measurement& avg) {
 	}
 
 	canvas.setFont(&FreeSansBold24pt7b);
-	drawCentered(canvas, "Current", labelBaseline, currentColors.labelColor);
+	printCentered(canvas, "Current", labelBaseline, currentColors.labelColor);
 	{
 		char str[16] = {};
 
@@ -120,7 +120,7 @@ void drawCurrent(const measurement& max, const measurement& avg) {
 			snprintf(str, 16, "%dmA", static_cast<int>(avg.current));
 		}
 
-		drawCentered(canvas, str, valueBaseline, currentColors.valueColor);
+		printCentered(canvas, str, valueBaseline, currentColors.valueColor);
 	}
 }
 
@@ -148,7 +148,7 @@ void drawVoltage(const measurement& max, const measurement& avg) {
 	}
 
 	canvas.setFont(&FreeSansBold24pt7b);
-	drawCentered(canvas, "Voltage", labelBaseline, voltageColors.labelColor);
+	printCentered(canvas, "Voltage", labelBaseline, voltageColors.labelColor);
 	{
 		char str[16] = {};
 
@@ -160,7 +160,7 @@ void drawVoltage(const measurement& max, const measurement& avg) {
 			snprintf(str, 16, "%5.2fV", avg.busVoltage);
 		}
 
-		drawCentered(canvas, str, valueBaseline, voltageColors.valueColor);
+		printCentered(canvas, str, valueBaseline, voltageColors.valueColor);
 	}
 }
 
@@ -188,7 +188,7 @@ void drawPower(const measurement& max, const measurement& avg) {
 	}
 
 	canvas.setFont(&FreeSansBold24pt7b);
-	drawCentered(canvas, "Power", labelBaseline, powerColors.labelColor);
+	printCentered(canvas, "Power", labelBaseline, powerColors.labelColor);
 	{
 		char str[16] = {};
 
@@ -200,7 +200,7 @@ void drawPower(const measurement& max, const measurement& avg) {
 			snprintf(str, 16, "%dmW", static_cast<unsigned>(avg.power));
 		}
 
-		drawCentered(canvas, str, valueBaseline, powerColors.valueColor);
+		printCentered(canvas, str, valueBaseline, powerColors.valueColor);
 	}
 }
 
@@ -302,20 +302,20 @@ void setup() {
 	tft.setTextWrap(true);
 
 	if (!ina219.begin()) {
-		canvas.setFont(&FreeSansBold24pt7b);
-		canvas.setCursor(16, labelBaseline);
-		tft.setTextColor(0xf800);
-		tft.setTextSize(2);
-		tft.print("INA219 not connected");
-
 		digitalWrite(LED_BUILTIN, HIGH);
 
+		canvas.setFont(&FreeSansBold24pt7b);
+
+		printCentered(canvas, "INA219", valueBaseline, 0xf800);
+		printCentered(canvas, "not", (valueBaseline + labelBaseline) / 2, 0xf800);
+		printCentered(canvas, "connected", labelBaseline, 0xf800);
+
+		tft.drawRGBBitmap(0, 0, canvas.getBuffer(), canvas.width(), canvas.height());
+
 		while (1) {
-			delay(1);
+			delay(100);
 		}
 	}
-
-	tft.setTextSize(1);
 }
 
 void loop() {
