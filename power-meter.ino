@@ -50,11 +50,11 @@ constexpr static colors
 
 
 struct measurement {
-	float busVoltage;
-	float current;
-	float power;
-	float shuntVoltage;
-	float supplyVoltage;
+	float busVoltage;     // V
+	float current;        // mA
+	float power;          // mW
+	float shuntVoltage;   // mV
+	float supplyVoltage;  // V
 };
 
 struct textCoords {
@@ -76,6 +76,12 @@ textCoords getTextCoords(Adafruit_GFX& gfx, const char* string, int16_t x, int16
 	gfx.getTextBounds(string, x, y, &x1, &y1, &w, &h);
 
 	return textCoords {x, y, x1, y1, w, h};
+}
+
+void drawCentered(Adafruit_GFX& gfx, const char* string, int16_t baseline, uint16_t color) {
+	canvas.setCursor((displayWidth - getTextCoords(canvas, string, 0, baseline).w) / 2, baseline);
+	canvas.setTextColor(color);
+	canvas.print(string);
 }
 
 void drawCurrent(const measurement& max, const measurement& avg) {
@@ -102,28 +108,19 @@ void drawCurrent(const measurement& max, const measurement& avg) {
 	}
 
 	canvas.setFont(&FreeSansBold24pt7b);
-
-	{
-		char str[] = "Current";
-		canvas.setCursor((displayWidth - getTextCoords(canvas, str, 0, labelBaseline).w) / 2, labelBaseline);
-		canvas.setTextColor(currentColors.labelColor);
-		canvas.print(str);
-	}
-
+	drawCentered(canvas, "Current", labelBaseline, currentColors.labelColor);
 	{
 		char str[16] = {};
 
 		if (avg.current < 100) {
 			snprintf(str, 16, "%4.2fmA", avg.current);
 		} else if (avg.current > 1000) {
-			snprintf(str, 16, "%dA", static_cast<unsigned>(avg.current / 1000));
+			snprintf(str, 16, "%5.2fA", avg.current / 1000.0f);
 		} else {
 			snprintf(str, 16, "%dmA", static_cast<int>(avg.current));
 		}
 
-		canvas.setCursor((displayWidth - getTextCoords(canvas, str, 0, valueBaseline).w) / 2, valueBaseline);
-		canvas.setTextColor(currentColors.valueColor);
-		canvas.print(str);
+		drawCentered(canvas, str, valueBaseline, currentColors.valueColor);
 	}
 }
 
@@ -151,14 +148,7 @@ void drawVoltage(const measurement& max, const measurement& avg) {
 	}
 
 	canvas.setFont(&FreeSansBold24pt7b);
-
-	{
-		char str[] = "Voltage";
-		canvas.setCursor((displayWidth - getTextCoords(canvas, str, 0, labelBaseline).w) / 2, labelBaseline);
-		canvas.setTextColor(voltageColors.labelColor);
-		canvas.print(str);
-	}
-
+	drawCentered(canvas, "Voltage", labelBaseline, voltageColors.labelColor);
 	{
 		char str[16] = {};
 
@@ -167,12 +157,10 @@ void drawVoltage(const measurement& max, const measurement& avg) {
 		} else if (avg.busVoltage < 1) {
 			snprintf(str, 16, "%dmV", static_cast<unsigned>(avg.busVoltage * 1000));
 		} else {
-			snprintf(str, 16, "%5.2V", avg.busVoltage);
+			snprintf(str, 16, "%5.2fV", avg.busVoltage);
 		}
 
-		canvas.setCursor((displayWidth - getTextCoords(canvas, str, 0, valueBaseline).w) / 2, valueBaseline);
-		canvas.setTextColor(voltageColors.valueColor);
-		canvas.print(str);
+		drawCentered(canvas, str, valueBaseline, voltageColors.valueColor);
 	}
 }
 
@@ -200,33 +188,25 @@ void drawPower(const measurement& max, const measurement& avg) {
 	}
 
 	canvas.setFont(&FreeSansBold24pt7b);
-
-	{
-		char str[] = "Power";
-		canvas.setCursor((displayWidth - getTextCoords(canvas, str, 0, labelBaseline).w) / 2, labelBaseline);
-		canvas.setTextColor(powerColors.labelColor);
-		canvas.print(str);
-	}
-
+	drawCentered(canvas, "Power", labelBaseline, powerColors.labelColor);
 	{
 		char str[16] = {};
 
 		if (avg.power < 100) {
 			snprintf(str, 16, "%4.2fmW", avg.power);
 		} else if (avg.power > 1000) {
-			snprintf(str, 16, "%dW", static_cast<unsigned>(avg.power / 1000));
+			snprintf(str, 16, "%5.2fW", avg.power / 1000.0f);
 		} else {
-			snprintf(str, 16, "%dmW", static_cast<int>(avg.power));
+			snprintf(str, 16, "%dmW", static_cast<unsigned>(avg.power));
 		}
 
-		canvas.setCursor((displayWidth - getTextCoords(canvas, str, 0, valueBaseline).w) / 2, valueBaseline);
-		canvas.setTextColor(powerColors.valueColor);
-		canvas.print(str);
+		drawCentered(canvas, str, valueBaseline, powerColors.valueColor);
 	}
 }
 
 void drawDetailed(const measurement& max, const measurement& avg) {
 	auto last {prev.back()};
+	char str[64] = {0};
 
 	canvas.setFont();
 	canvas.fillScreen(0);
@@ -237,35 +217,26 @@ void drawDetailed(const measurement& max, const measurement& avg) {
 	canvas.print("Power meter");
 
 	canvas.setTextSize(1);
+	canvas.setCursor(0, 24);
+
 	canvas.setTextColor(0xf800, 0);
-	canvas.print("Bus:     ");
-	canvas.print(last.busVoltage);
-	canvas.print(" V. Avg: ");
-	canvas.print(avg.busVoltage);
-	canvas.println(" V    ");
+	snprintf(str, 64, "Bus: %5.2fV, Avg: %5.2fV  ", last.busVoltage, avg.busVoltage);
+	canvas.println(str);
+
 	canvas.setTextColor(0x07e0, 0);
-	canvas.print("Current: ");
-	canvas.print(last.current);
-	canvas.print(" mA. Avg: ");
-	canvas.print(avg.current);
-	canvas.println(" mA    ");
+	snprintf(str, 64, "Current: %4.2fA, Avg: %4.2fA  ", last.current / 1000.0f, avg.current / 1000.0f);
+	canvas.println(str);
+
 	canvas.setTextColor(0xffe0, 0);
-	canvas.print("Power:   ");
-	canvas.print(last.power);
-	canvas.print(" mW. Avg: ");
-	canvas.print(avg.power);
-	canvas.println(" mW    ");
+	snprintf(str, 64, "Power: %5.2fW, Avg: %5.2fW  ", last.power / 1000.0f, avg.power / 1000.0f);
+	canvas.println(str);
+
 	canvas.setTextColor(0xffff, 0);
-	canvas.print("Shunt:   ");
-	canvas.print(last.shuntVoltage);
-	canvas.print(" mV. Avg: ");
-	canvas.print(avg.shuntVoltage);
-	canvas.println(" mV    ");
-	canvas.print("Load:    ");
-	canvas.print(last.supplyVoltage);
-	canvas.print(" V. Avg: ");
-	canvas.print(avg.supplyVoltage);
-	canvas.println(" V    ");
+	snprintf(str, 64, "Shunt: %5.2fmV, Avg: %5.2fmV  ", last.shuntVoltage, avg.shuntVoltage);
+	canvas.println(str);
+
+	snprintf(str, 64, "Supply: %5.2fV, Avg: %5.2fV  ", last.supplyVoltage, avg.supplyVoltage);
+	canvas.println(str);
 
 	float busVoltageScale = 70 / max.busVoltage;
 	float currentScale = 70 / max.current;
@@ -365,24 +336,18 @@ void loop() {
 	};
 	startTime = millis();
 
-	curr.supplyVoltage = curr.busVoltage + (curr.shuntVoltage / 1000.0f);
-	curr.power = curr.busVoltage * curr.current * 1000.0f;
-
 	if (curr.busVoltage < 0.05f) {
 		curr.busVoltage = 0;
 	}
-	if (curr.current < 0.5f) {
+	if (curr.current < 0.01f) {
 		curr.current = 0;
 	}
-	if (curr.power < 0.5f) {
-		curr.power = 0;
-	}
-	if (curr.shuntVoltage < 0.02f) {
+	if (curr.shuntVoltage < 0) {
 		curr.shuntVoltage = 0;
 	}
-	if (curr.supplyVoltage < 0.05f) {
-		curr.supplyVoltage = 0;
-	}
+
+	curr.supplyVoltage = curr.busVoltage + (curr.shuntVoltage / 1000.0f);
+	curr.power = curr.busVoltage * curr.current;
 
 	char str[128];
 	snprintf(
