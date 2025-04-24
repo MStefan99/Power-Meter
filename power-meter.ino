@@ -6,12 +6,42 @@
 #include <SPI.h>
 
 // Pin numbers
-constexpr static uint8_t BUTTON {0};
+constexpr static uint8_t BUTTON_PIN {0};
 
+// Definitions
 Adafruit_INA219 ina219;
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
-// Display resolution: 240x135
-GFXcanvas16     canvas(240, 135);
+GFXcanvas16     canvas(240, 135);  // Display resolution: 240x135
+
+enum MODE : uint8_t {
+	Current,
+	Voltage,
+	Power,
+	Detailed,
+};
+
+typedef struct {
+	uint16_t bgColor;
+	uint16_t fillColor;
+	uint16_t labelColor;
+	uint16_t valueColor;
+} colors;
+
+// Configuration options
+static uint8_t            mode {MODE::Current};  // Initial mode to start in
+constexpr static uint32_t longPressTime {2000};  // Long press time (to switch to detailed mode)
+constexpr static uint8_t  memorySize {80};       // Number of samples to keep
+constexpr static uint32_t windowTime {5000};     // History window ()
+
+constexpr static colors
+    currentColors {.bgColor = 0x2226, .fillColor = 0x3d6e, .labelColor = 0x2c4a, .valueColor = 0xbff9};
+constexpr static colors
+    voltageColors {.bgColor = 0x4144, .fillColor = 0xaa87, .labelColor = 0x89a5, .valueColor = 0xfeb8};
+constexpr static colors
+    powerColors {.bgColor = 0x4204, .fillColor = 0xad07, .labelColor = 0x8bc5, .valueColor = 0xff97};
+
+// End of configuration options
+
 
 typedef struct {
 	float busVoltage;
@@ -21,40 +51,11 @@ typedef struct {
 	float supplyVoltage;
 } measurement;
 
-typedef struct {
-	uint16_t bgColor;
-	uint16_t fillColor;
-	uint16_t labelColor;
-	uint16_t valueColor;
-} colors;
-
-enum MODE : uint8_t {
-	Current,
-	Voltage,
-	Power,
-	Detailed,
-};
-
 static std::deque<measurement> prev;
-static uint8_t                 mode {MODE::Current};
-
-static uint32_t           buttonPressTime {0};
-constexpr static uint32_t longPressTime {2000};
-
-constexpr static uint8_t  memorySize {120};
-constexpr static uint8_t  divisionWidth {240 / memorySize};
-constexpr static uint32_t windowTime {5000};
-
-constexpr static uint32_t stepTime {windowTime / memorySize};
-
-constexpr static colors
-    currentColors {.bgColor = 0x2226, .fillColor = 0x3d6e, .labelColor = 0x2c4a, .valueColor = 0xbff9};
-constexpr static colors
-    voltageColors {.bgColor = 0x4144, .fillColor = 0xaa87, .labelColor = 0x89a5, .valueColor = 0xfeb8};
-constexpr static colors
-    powerColors {.bgColor = 0x4204, .fillColor = 0xad07, .labelColor = 0x8bc5, .valueColor = 0xff97};
-
-static uint32_t startTime {0};
+static uint32_t                startTime {0};
+static uint32_t                buttonPressTime {0};
+constexpr static uint8_t       divisionWidth {240 / memorySize};
+constexpr static uint32_t      stepTime {windowTime / memorySize};
 
 void drawCurrent(const measurement& max, const measurement& avg) {
 	float scale = 135 / max.current;
@@ -262,9 +263,9 @@ void (*drawFunctions[])(const measurement& max, const measurement& avg) =
     {drawCurrent, drawVoltage, drawPower, drawDetailed};
 
 void Button_Handler() {
-	if (!digitalRead(BUTTON)) {
+	if (!digitalRead(BUTTON_PIN)) {
 		buttonPressTime = millis();
-	} else if (digitalRead(BUTTON)) {
+	} else if (digitalRead(BUTTON_PIN)) {
 		if (mode < 3 || millis() - buttonPressTime < longPressTime) {
 			++mode;
 			if (mode > 2) {
@@ -281,10 +282,10 @@ void setup() {
 	digitalWrite(TFT_BACKLITE, HIGH);
 	pinMode(TFT_I2C_POWER, OUTPUT);
 	digitalWrite(TFT_I2C_POWER, HIGH);
-	pinMode(BUTTON, INPUT_PULLUP);
+	pinMode(BUTTON_PIN, INPUT_PULLUP);
 	pinMode(LED_BUILTIN, OUTPUT);
 
-	attachInterrupt(digitalPinToInterrupt(BUTTON), Button_Handler, CHANGE);
+	attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), Button_Handler, CHANGE);
 
 	tft.init(135, 240);
 	tft.setRotation(3);
@@ -307,10 +308,9 @@ void setup() {
 }
 
 void loop() {
-	if (!digitalRead(BUTTON) && millis() - buttonPressTime > longPressTime) {
+	if (!digitalRead(BUTTON_PIN) && millis() - buttonPressTime > longPressTime) {
 		mode = 3;
 	}
-
 
 	measurement curr {
 	  .busVoltage = ina219.getBusVoltage_V(),
