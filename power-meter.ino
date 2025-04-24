@@ -9,9 +9,12 @@
 constexpr static uint8_t BUTTON_PIN {0};
 
 // Definitions
+constexpr static uint16_t displayWidth {240};
+constexpr static uint16_t displayHeight {135};
+
 Adafruit_INA219 ina219;
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
-GFXcanvas16     canvas(240, 135);  // Display resolution: 240x135
+GFXcanvas16     canvas(displayWidth, displayHeight);  // Display resolution: displayWidthxdisplayHeight
 
 enum MODE : uint8_t {
 	Current,
@@ -20,18 +23,21 @@ enum MODE : uint8_t {
 	Detailed,
 };
 
-typedef struct {
+struct colors {
 	uint16_t bgColor;
 	uint16_t fillColor;
 	uint16_t labelColor;
 	uint16_t valueColor;
-} colors;
+};
 
 // Configuration options
 static uint8_t            mode {MODE::Current};  // Initial mode to start in
 constexpr static uint32_t longPressTime {2000};  // Long press time (to switch to detailed mode)
 constexpr static uint8_t  memorySize {80};       // Number of samples to keep
-constexpr static uint32_t windowTime {5000};     // History window ()
+constexpr static uint32_t windowTime {5000};     // History window time
+
+constexpr static uint16_t valueBaseline {50};   // Vertical coordinate of the value (0 - top)
+constexpr static uint16_t labelBaseline {115};  // Vertical coordinate of the label (0 - top)
 
 constexpr static colors
     currentColors {.bgColor = 0x2226, .fillColor = 0x3d6e, .labelColor = 0x2c4a, .valueColor = 0xbff9};
@@ -43,36 +49,51 @@ constexpr static colors
 // End of configuration options
 
 
-typedef struct {
+struct measurement {
 	float busVoltage;
 	float current;
 	float power;
 	float shuntVoltage;
 	float supplyVoltage;
-} measurement;
+};
+
+struct textCoords {
+	int16_t  x0, y0;
+	int16_t  x1, y1;
+	uint16_t w, h;
+};
 
 static std::deque<measurement> prev;
 static uint32_t                startTime {0};
 static uint32_t                buttonPressTime {0};
-constexpr static uint8_t       divisionWidth {240 / memorySize};
+constexpr static uint8_t       divisionWidth {displayWidth / memorySize};
 constexpr static uint32_t      stepTime {windowTime / memorySize};
 
+textCoords getTextCoords(Adafruit_GFX& gfx, const char* string, int16_t x, int16_t y) {
+	int16_t  x1, y1;
+	uint16_t w, h;
+
+	gfx.getTextBounds(string, x, y, &x1, &y1, &w, &h);
+
+	return textCoords {x, y, x1, y1, w, h};
+}
+
 void drawCurrent(const measurement& max, const measurement& avg) {
-	float scale = 135 / max.current;
+	float scale = displayHeight / max.current;
 	canvas.fillScreen(currentColors.bgColor);
 
 	for (uint8_t i {0}; i < prev.size() - 1; ++i) {
 		bool    up = prev[i].current < prev[i + 1].current;
-		uint8_t minCoord = 135 - (up ? prev[i].current : prev[i + 1].current) * scale;
+		uint8_t minCoord = displayHeight - (up ? prev[i].current : prev[i + 1].current) * scale;
 
 		if (max.current) {
-			canvas.fillRect(divisionWidth * i, minCoord, divisionWidth, 135, currentColors.fillColor);
+			canvas.fillRect(divisionWidth * i, minCoord, divisionWidth, displayHeight, currentColors.fillColor);
 
 			canvas.fillTriangle(
 			    divisionWidth * i,
-			    135 - prev[i].current * scale,
+			    displayHeight - prev[i].current * scale,
 			    divisionWidth * (i + 1),
-			    135 - prev[i + 1].current * scale,
+			    displayHeight - prev[i + 1].current * scale,
 			    up ? divisionWidth * (i + 1) : divisionWidth * i,
 			    minCoord,
 			    currentColors.fillColor
@@ -82,40 +103,46 @@ void drawCurrent(const measurement& max, const measurement& avg) {
 
 	canvas.setFont(&FreeSansBold24pt7b);
 
-	canvas.setCursor(16, 115);
-	canvas.setTextColor(currentColors.labelColor);
-	canvas.print("Current");
+	{
+		char str[] = "Current";
+		canvas.setCursor((displayWidth - getTextCoords(canvas, str, 0, labelBaseline).w) / 2, labelBaseline);
+		canvas.setTextColor(currentColors.labelColor);
+		canvas.print(str);
+	}
 
-	canvas.setCursor(16, 50);
-	canvas.setTextColor(currentColors.valueColor);
-	if (avg.current < 100) {
-		canvas.print(avg.current);
-		canvas.print("mA");
-	} else if (avg.current > 1000) {
-		canvas.print(avg.current * 0.001);
-		canvas.print("A");
-	} else {
-		canvas.print(static_cast<int>(avg.current));
-		canvas.print("mA");
+	{
+		char str[16] = {};
+
+		if (avg.current < 100) {
+			snprintf(str, 16, "%4.2fmA", avg.current);
+		} else if (avg.current > 1000) {
+			snprintf(str, 16, "%dA", static_cast<unsigned>(avg.current / 1000));
+		} else {
+			snprintf(str, 16, "%dmA", static_cast<int>(avg.current));
+		}
+
+		canvas.setCursor((displayWidth - getTextCoords(canvas, str, 0, valueBaseline).w) / 2, valueBaseline);
+		canvas.setTextColor(currentColors.valueColor);
+		canvas.print(str);
 	}
 }
 
 void drawVoltage(const measurement& max, const measurement& avg) {
-	float scale = 135 / max.busVoltage;
+	float scale = displayHeight / max.busVoltage;
 	canvas.fillScreen(voltageColors.bgColor);
 
 	for (uint8_t i {0}; i < prev.size() - 1; ++i) {
 		bool    up = prev[i].busVoltage < prev[i + 1].busVoltage;
-		uint8_t minCoord = 135 - (up ? prev[i].busVoltage : prev[i + 1].busVoltage) * scale;
+		uint8_t minCoord = displayHeight - (up ? prev[i].busVoltage : prev[i + 1].busVoltage) * scale;
 
 		if (max.busVoltage) {
-			canvas.fillRect(divisionWidth * i, minCoord, divisionWidth, 135, voltageColors.fillColor);
+			canvas.fillRect(divisionWidth * i, minCoord, divisionWidth, displayHeight, voltageColors.fillColor);
 
 			canvas.fillTriangle(
 			    divisionWidth * i,
-			    135 - prev[i].busVoltage * scale,
+			    displayHeight - prev[i].busVoltage * scale,
 			    divisionWidth * (i + 1),
-			    135 - prev[i + 1].busVoltage * scale,
+			    displayHeight - prev[i + 1].busVoltage * scale,
 			    up ? divisionWidth * (i + 1) : divisionWidth * i,
 			    minCoord,
 			    voltageColors.fillColor
@@ -125,40 +152,46 @@ void drawVoltage(const measurement& max, const measurement& avg) {
 
 	canvas.setFont(&FreeSansBold24pt7b);
 
-	canvas.setCursor(16, 115);
-	canvas.setTextColor(voltageColors.labelColor);
-	canvas.print("Voltage");
+	{
+		char str[] = "Voltage";
+		canvas.setCursor((displayWidth - getTextCoords(canvas, str, 0, labelBaseline).w) / 2, labelBaseline);
+		canvas.setTextColor(voltageColors.labelColor);
+		canvas.print(str);
+	}
 
-	canvas.setCursor(16, 50);
-	canvas.setTextColor(voltageColors.valueColor);
-	if (avg.busVoltage < 0.1) {
-		canvas.print(avg.busVoltage * 1000);
-		canvas.print("mV");
-	} else if (avg.busVoltage < 1) {
-		canvas.print(static_cast<int>(avg.busVoltage * 1000));
-		canvas.print("mV");
-	} else {
-		canvas.print(avg.busVoltage);
-		canvas.print("V");
+	{
+		char str[16] = {};
+
+		if (avg.busVoltage < 0.1f) {
+			snprintf(str, 16, "%4.2fmV", avg.busVoltage * 1000);
+		} else if (avg.busVoltage < 1) {
+			snprintf(str, 16, "%dmV", static_cast<unsigned>(avg.busVoltage * 1000));
+		} else {
+			snprintf(str, 16, "%5.2V", avg.busVoltage);
+		}
+
+		canvas.setCursor((displayWidth - getTextCoords(canvas, str, 0, valueBaseline).w) / 2, valueBaseline);
+		canvas.setTextColor(voltageColors.valueColor);
+		canvas.print(str);
 	}
 }
 
 void drawPower(const measurement& max, const measurement& avg) {
-	float scale = 135 / max.power;
+	float scale = displayHeight / max.power;
 	canvas.fillScreen(powerColors.bgColor);
 
 	for (uint8_t i {0}; i < prev.size() - 1; ++i) {
 		bool    up = prev[i].power < prev[i + 1].power;
-		uint8_t minCoord = 135 - (up ? prev[i].power : prev[i + 1].power) * scale;
+		uint8_t minCoord = displayHeight - (up ? prev[i].power : prev[i + 1].power) * scale;
 
 		if (max.power) {
-			canvas.fillRect(divisionWidth * i, minCoord, divisionWidth, 135, powerColors.fillColor);
+			canvas.fillRect(divisionWidth * i, minCoord, divisionWidth, displayHeight, powerColors.fillColor);
 
 			canvas.fillTriangle(
 			    divisionWidth * i,
-			    135 - prev[i].power * scale,
+			    displayHeight - prev[i].power * scale,
 			    divisionWidth * (i + 1),
-			    135 - prev[i + 1].power * scale,
+			    displayHeight - prev[i + 1].power * scale,
 			    up ? divisionWidth * (i + 1) : divisionWidth * i,
 			    minCoord,
 			    powerColors.fillColor
@@ -168,21 +201,27 @@ void drawPower(const measurement& max, const measurement& avg) {
 
 	canvas.setFont(&FreeSansBold24pt7b);
 
-	canvas.setCursor(16, 115);
-	canvas.setTextColor(powerColors.labelColor);
-	canvas.print("Power");
+	{
+		char str[] = "Power";
+		canvas.setCursor((displayWidth - getTextCoords(canvas, str, 0, labelBaseline).w) / 2, labelBaseline);
+		canvas.setTextColor(powerColors.labelColor);
+		canvas.print(str);
+	}
 
-	canvas.setCursor(16, 50);
-	canvas.setTextColor(powerColors.valueColor);
-	if (avg.power < 100) {
-		canvas.print(avg.power);
-		canvas.print("mW");
-	} else if (avg.power > 1000) {
-		canvas.print(avg.power * 0.001);
-		canvas.print("W");
-	} else {
-		canvas.print(static_cast<int>(avg.power));
-		canvas.print("mW");
+	{
+		char str[16] = {};
+
+		if (avg.power < 100) {
+			snprintf(str, 16, "%4.2fmW", avg.power);
+		} else if (avg.power > 1000) {
+			snprintf(str, 16, "%dW", static_cast<unsigned>(avg.power / 1000));
+		} else {
+			snprintf(str, 16, "%dmW", static_cast<int>(avg.power));
+		}
+
+		canvas.setCursor((displayWidth - getTextCoords(canvas, str, 0, valueBaseline).w) / 2, valueBaseline);
+		canvas.setTextColor(powerColors.valueColor);
+		canvas.print(str);
 	}
 }
 
@@ -197,7 +236,6 @@ void drawDetailed(const measurement& max, const measurement& avg) {
 	canvas.setTextColor(0xffe0);
 	canvas.print("Power meter");
 
-	canvas.setCursor(0, 24);
 	canvas.setTextSize(1);
 	canvas.setTextColor(0xf800, 0);
 	canvas.print("Bus:     ");
@@ -237,23 +275,23 @@ void drawDetailed(const measurement& max, const measurement& avg) {
 		canvas.fillRect(divisionWidth * i, 64, divisionWidth, 71, 0);
 		canvas.drawLine(
 		    divisionWidth * i,
-		    135 - prev[i].busVoltage * busVoltageScale,
+		    displayHeight - prev[i].busVoltage * busVoltageScale,
 		    divisionWidth * (i + 1),
-		    135 - prev[i + 1].busVoltage * busVoltageScale,
+		    displayHeight - prev[i + 1].busVoltage * busVoltageScale,
 		    0xf800
 		);
 		canvas.drawLine(
 		    divisionWidth * i,
-		    135 - prev[i].current * currentScale,
+		    displayHeight - prev[i].current * currentScale,
 		    divisionWidth * (i + 1),
-		    135 - prev[i + 1].current * currentScale,
+		    displayHeight - prev[i + 1].current * currentScale,
 		    0x07e0
 		);
 		canvas.drawLine(
 		    divisionWidth * i,
-		    135 - prev[i].power * powerScale,
+		    displayHeight - prev[i].power * powerScale,
 		    divisionWidth * (i + 1),
-		    135 - prev[i + 1].power * powerScale,
+		    displayHeight - prev[i + 1].power * powerScale,
 		    0xffe0
 		);
 	}
@@ -287,16 +325,18 @@ void setup() {
 
 	attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), Button_Handler, CHANGE);
 
-	tft.init(135, 240);
+	tft.init(displayHeight, displayWidth);
 	tft.setRotation(3);
 	tft.fillScreen(0);
 	tft.setTextWrap(true);
 
 	if (!ina219.begin()) {
-		tft.setCursor(0, 24);
+		canvas.setFont(&FreeSansBold24pt7b);
+		canvas.setCursor(16, labelBaseline);
 		tft.setTextColor(0xf800);
 		tft.setTextSize(2);
 		tft.print("INA219 not connected");
+
 		digitalWrite(LED_BUILTIN, HIGH);
 
 		while (1) {
