@@ -18,7 +18,7 @@ typedef struct {
 	float current;
 	float power;
 	float shuntVoltage;
-	float loadVoltage;
+	float supplyVoltage;
 } measurement;
 
 typedef struct {
@@ -42,8 +42,11 @@ static bool               latch {false};
 static uint32_t           buttonPressTime {0};
 constexpr static uint32_t longPressTime {2000};
 
-constexpr static uint8_t memorySize {80};
-constexpr static uint8_t divisionWidth {240 / memorySize};
+constexpr static uint8_t  memorySize {80};
+constexpr static uint8_t  divisionWidth {240 / memorySize};
+constexpr static uint32_t windowTime {5000};
+
+constexpr static uint32_t stepTime {windowTime / memorySize};
 
 constexpr static colors
     currentColors {.bgColor = 0x2226, .fillColor = 0x3d6e, .labelColor = 0x2c4a, .valueColor = 0xbff9};
@@ -219,9 +222,9 @@ void drawDetailed(const measurement& max, const measurement& avg) {
 	canvas.print(avg.shuntVoltage);
 	canvas.println(" mV    ");
 	canvas.print("Load:    ");
-	canvas.print(last.loadVoltage);
+	canvas.print(last.supplyVoltage);
 	canvas.print(" V. Avg: ");
-	canvas.print(avg.loadVoltage);
+	canvas.print(avg.supplyVoltage);
 	canvas.println(" V    ");
 
 	float busVoltageScale = 70 / max.busVoltage;
@@ -306,28 +309,41 @@ void loop() {
 		mode = 3;
 	}
 
+	uint32_t startTime {millis()};
+
 	measurement curr {
 	  .busVoltage = ina219.getBusVoltage_V(),
 	  .current = ina219.getCurrent_mA(),
-	  .power = ina219.getPower_mW(),
 	  .shuntVoltage = ina219.getShuntVoltage_mV()
 	};
-	curr.loadVoltage = curr.busVoltage + (curr.shuntVoltage / 1000);
 
-	if (curr.busVoltage < 0.05) {
+	unsigned a {0};
+	for (unsigned i {0}; millis() - startTime < stepTime; ++i) {
+		curr.busVoltage += (ina219.getBusVoltage_V() - curr.busVoltage) / (i + 1);
+		curr.current += (ina219.getCurrent_mA() - curr.current) / (i + 1);
+		curr.shuntVoltage += (ina219.getShuntVoltage_mV() - curr.shuntVoltage) / (i + 1);
+		a = i;
+	};
+	Serial.print("Done, averaged ");
+	Serial.println(a);
+
+	curr.supplyVoltage = curr.busVoltage + (curr.shuntVoltage / 1000.0f);
+	curr.power = curr.busVoltage * curr.current * 1000.0f;
+
+	if (curr.busVoltage < 0.05f) {
 		curr.busVoltage = 0;
 	}
-	if (curr.current < 0.5) {
+	if (curr.current < 0.5f) {
 		curr.current = 0;
 	}
-	if (curr.power < 0.5) {
+	if (curr.power < 0.5f) {
 		curr.power = 0;
 	}
-	if (curr.shuntVoltage < 0.02) {
+	if (curr.shuntVoltage < 0.02f) {
 		curr.shuntVoltage = 0;
 	}
-	if (curr.loadVoltage < 0.05) {
-		curr.loadVoltage = 0;
+	if (curr.supplyVoltage < 0.05f) {
+		curr.supplyVoltage = 0;
 	}
 
 	char str[128];
@@ -340,7 +356,7 @@ void loop() {
 	    curr.busVoltage,
 	    curr.power,
 	    curr.shuntVoltage,
-	    curr.loadVoltage
+	    curr.supplyVoltage
 	);
 	Serial.print(str);
 
@@ -365,19 +381,17 @@ void loop() {
 		if (prev[i].shuntVoltage > max.shuntVoltage) {
 			max.shuntVoltage = prev[i].shuntVoltage;
 		}
-		if (prev[i].loadVoltage > max.loadVoltage) {
-			max.loadVoltage = prev[i].loadVoltage;
+		if (prev[i].supplyVoltage > max.supplyVoltage) {
+			max.supplyVoltage = prev[i].supplyVoltage;
 		}
 
 		avg.busVoltage += (prev[i].busVoltage - avg.busVoltage) / (i + 1);
 		avg.current += (prev[i].current - avg.current) / (i + 1);
 		avg.power += (prev[i].power - avg.power) / (i + 1);
 		avg.shuntVoltage += (prev[i].shuntVoltage - avg.shuntVoltage) / (i + 1);
-		avg.loadVoltage += (prev[i].loadVoltage - avg.loadVoltage) / (i + 1);
+		avg.supplyVoltage += (prev[i].supplyVoltage - avg.supplyVoltage) / (i + 1);
 	}
 
 	drawFunctions[mode](max, avg);
 	tft.drawRGBBitmap(0, 0, canvas.getBuffer(), canvas.width(), canvas.height());
-
-	delay(5);
 }
