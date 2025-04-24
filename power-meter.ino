@@ -38,11 +38,10 @@ enum MODE : uint8_t {
 static std::deque<measurement> prev;
 static uint8_t                 mode {MODE::Current};
 
-static bool               latch {false};
 static uint32_t           buttonPressTime {0};
 constexpr static uint32_t longPressTime {2000};
 
-constexpr static uint8_t  memorySize {80};
+constexpr static uint8_t  memorySize {120};
 constexpr static uint8_t  divisionWidth {240 / memorySize};
 constexpr static uint32_t windowTime {5000};
 
@@ -54,6 +53,8 @@ constexpr static colors
     voltageColors {.bgColor = 0x4144, .fillColor = 0xaa87, .labelColor = 0x89a5, .valueColor = 0xfeb8};
 constexpr static colors
     powerColors {.bgColor = 0x4204, .fillColor = 0xad07, .labelColor = 0x8bc5, .valueColor = 0xff97};
+
+static uint32_t startTime {0};
 
 void drawCurrent(const measurement& max, const measurement& avg) {
 	float scale = 135 / max.current;
@@ -260,6 +261,19 @@ void drawDetailed(const measurement& max, const measurement& avg) {
 void (*drawFunctions[])(const measurement& max, const measurement& avg) =
     {drawCurrent, drawVoltage, drawPower, drawDetailed};
 
+void Button_Handler() {
+	if (!digitalRead(BUTTON)) {
+		buttonPressTime = millis();
+	} else if (digitalRead(BUTTON)) {
+		if (mode < 3 || millis() - buttonPressTime < longPressTime) {
+			++mode;
+			if (mode > 2) {
+				mode = 0;
+			}
+		}
+	}
+}
+
 void setup() {
 	Serial.begin(115200);
 
@@ -270,7 +284,7 @@ void setup() {
 	pinMode(BUTTON, INPUT_PULLUP);
 	pinMode(LED_BUILTIN, OUTPUT);
 
-	delay(10);
+	attachInterrupt(digitalPinToInterrupt(BUTTON), Button_Handler, CHANGE);
 
 	tft.init(135, 240);
 	tft.setRotation(3);
@@ -293,23 +307,10 @@ void setup() {
 }
 
 void loop() {
-	if (!digitalRead(BUTTON) && !latch) {
-		latch = true;
-		buttonPressTime = millis();
-	} else if (digitalRead(BUTTON) && latch) {
-		latch = false;
-
-		if (mode < 3 || millis() - buttonPressTime < longPressTime) {
-			++mode;
-			if (mode > 2) {
-				mode = 0;
-			}
-		}
-	} else if (!digitalRead(BUTTON) && millis() - buttonPressTime > longPressTime) {
+	if (!digitalRead(BUTTON) && millis() - buttonPressTime > longPressTime) {
 		mode = 3;
 	}
 
-	uint32_t startTime {millis()};
 
 	measurement curr {
 	  .busVoltage = ina219.getBusVoltage_V(),
@@ -317,15 +318,12 @@ void loop() {
 	  .shuntVoltage = ina219.getShuntVoltage_mV()
 	};
 
-	unsigned a {0};
 	for (unsigned i {0}; millis() - startTime < stepTime; ++i) {
 		curr.busVoltage += (ina219.getBusVoltage_V() - curr.busVoltage) / (i + 1);
 		curr.current += (ina219.getCurrent_mA() - curr.current) / (i + 1);
 		curr.shuntVoltage += (ina219.getShuntVoltage_mV() - curr.shuntVoltage) / (i + 1);
-		a = i;
 	};
-	Serial.print("Done, averaged ");
-	Serial.println(a);
+	startTime = millis();
 
 	curr.supplyVoltage = curr.busVoltage + (curr.shuntVoltage / 1000.0f);
 	curr.power = curr.busVoltage * curr.current * 1000.0f;
