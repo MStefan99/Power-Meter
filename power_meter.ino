@@ -47,35 +47,14 @@ constexpr static colors
 constexpr static colors
     powerColors {.bgColor = 0x4204, .fillColor = 0xad07, .labelColor = 0x8bc5, .valueColor = 0xff97};
 
-void setupCurrent() {
-	canvas.fillScreen(currentColors.bgColor);
-}
-
-void setupVoltage() {
-	canvas.fillScreen(voltageColors.bgColor);
-}
-
-void setupPower() {
-	canvas.fillScreen(powerColors.bgColor);
-}
-
-void setupDetailed() {
-	canvas.fillScreen(0);
-
-	canvas.setCursor(0, 0);
-	canvas.setTextSize(3);
-	canvas.setTextColor(0xffe0);
-	canvas.print("Power meter");
-}
 
 void drawCurrent(const measurement& max, const measurement& avg) {
 	float scale = 135 / max.current;
+	canvas.fillScreen(currentColors.bgColor);
 
 	for (uint8_t i {0}; i < prev.size() - 1; ++i) {
 		bool    up = prev[i].current < prev[i + 1].current;
 		uint8_t minCoord = 135 - (up ? prev[i].current : prev[i + 1].current) * scale;
-
-		canvas.fillRect(divisionWidth * i, 0, divisionWidth, minCoord, currentColors.bgColor);
 
 		if (max.current) {
 			canvas.fillRect(divisionWidth * i, minCoord, divisionWidth, 135, currentColors.fillColor);
@@ -114,12 +93,11 @@ void drawCurrent(const measurement& max, const measurement& avg) {
 
 void drawVoltage(const measurement& max, const measurement& avg) {
 	float scale = 135 / max.busVoltage;
+	canvas.fillScreen(voltageColors.bgColor);
 
 	for (uint8_t i {0}; i < prev.size() - 1; ++i) {
 		bool    up = prev[i].busVoltage < prev[i + 1].busVoltage;
 		uint8_t minCoord = 135 - (up ? prev[i].busVoltage : prev[i + 1].busVoltage) * scale;
-
-		canvas.fillRect(divisionWidth * i, 0, divisionWidth, minCoord, voltageColors.bgColor);
 
 		if (max.busVoltage) {
 			canvas.fillRect(divisionWidth * i, minCoord, divisionWidth, 135, voltageColors.fillColor);
@@ -158,12 +136,11 @@ void drawVoltage(const measurement& max, const measurement& avg) {
 
 void drawPower(const measurement& max, const measurement& avg) {
 	float scale = 135 / max.power;
+	canvas.fillScreen(powerColors.bgColor);
 
 	for (uint8_t i {0}; i < prev.size() - 1; ++i) {
 		bool    up = prev[i].power < prev[i + 1].power;
 		uint8_t minCoord = 135 - (up ? prev[i].power : prev[i + 1].power) * scale;
-
-		canvas.fillRect(divisionWidth * i, 0, divisionWidth, minCoord, powerColors.bgColor);
 
 		if (max.power) {
 			canvas.fillRect(divisionWidth * i, minCoord, divisionWidth, 135, powerColors.fillColor);
@@ -202,6 +179,13 @@ void drawPower(const measurement& max, const measurement& avg) {
 
 void drawDetailed(const measurement& max, const measurement& avg) {
 	auto last {prev.back()};
+	
+	canvas.fillScreen(0);
+
+	canvas.setCursor(0, 0);
+	canvas.setTextSize(3);
+	canvas.setTextColor(0xffe0);
+	canvas.print("Power meter");
 
 	canvas.setCursor(0, 24);
 	canvas.setTextSize(1);
@@ -265,7 +249,6 @@ void drawDetailed(const measurement& max, const measurement& avg) {
 	}
 }
 
-void (*setupFunctions[])() = {setupCurrent, setupVoltage, setupPower, setupDetailed};
 void (*drawFunctions[])(const measurement& max, const measurement& avg) =
     {drawCurrent, drawVoltage, drawPower, drawDetailed};
 
@@ -294,7 +277,6 @@ void setup() {
 	}
 
 	tft.setTextSize(1);
-	setupFunctions[mode]();
 }
 
 void loop() {
@@ -304,7 +286,6 @@ void loop() {
 		if (mode > 3) {
 			mode = 0;
 		}
-		setupFunctions[mode]();
 	} else if (digitalRead(BUTTON) && latch) {
 		latch = false;
 	}
@@ -332,7 +313,10 @@ void loop() {
 	if (curr.loadVoltage < 0.05) {
 		curr.loadVoltage = 0;
 	}
-	Serial.println(curr.loadVoltage);
+
+	char str[128];
+	snprintf(str, 128, "Time: %d, Current: %5.2f, Voltage: %6.3f, Power: %6.3f, Shunt voltage: %6.3f, Load voltage: %6.3f\n", millis(), curr.current, curr.busVoltage, curr.power, curr.shuntVoltage, curr.loadVoltage);
+	Serial.print(str);
 
 	prev.push_back(curr);
 	if (prev.size() > memorySize + 1) {
@@ -370,9 +354,4 @@ void loop() {
 	tft.drawRGBBitmap(0, 0, canvas.getBuffer(), canvas.width(), canvas.height());
 
 	delay(5);
-
-	if (millis() - lastClear > 60000 || millis() < lastClear) {
-		setupFunctions[mode]();
-		lastClear = millis();
-	}
 }
