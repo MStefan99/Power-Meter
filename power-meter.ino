@@ -36,8 +36,8 @@ constexpr static uint32_t longPressTime {2000};  // Long press time (to switch t
 constexpr static uint8_t  memorySize {80};       // Number of samples to keep
 constexpr static uint32_t windowTime {5000};     // History window time
 
-constexpr static uint16_t valueBaseline {50};   // Vertical coordinate of the value (0 - top)
-constexpr static uint16_t labelBaseline {115};  // Vertical coordinate of the label (0 - top)
+constexpr static uint16_t valueBaseline {55};   // Vertical coordinate of the value (0 - top)
+constexpr static uint16_t labelBaseline {110};  // Vertical coordinate of the label (0 - top)
 
 constexpr static colors
     currentColors {.bgColor = 0x2226, .fillColor = 0x3d6e, .labelColor = 0x2c4a, .valueColor = 0xbff9};
@@ -306,9 +306,9 @@ void setup() {
 
 		canvas.setFont(&FreeSansBold24pt7b);
 
-		printCentered(canvas, "INA219", valueBaseline, 0xf800);
-		printCentered(canvas, "not", (valueBaseline + labelBaseline) / 2, 0xf800);
-		printCentered(canvas, "connected", labelBaseline, 0xf800);
+		printCentered(canvas, "INA219", 40, 0xf800);
+		printCentered(canvas, "not", 82, 0xf800);
+		printCentered(canvas, "connected", 125, 0xf800);
 
 		tft.drawRGBBitmap(0, 0, canvas.getBuffer(), canvas.width(), canvas.height());
 
