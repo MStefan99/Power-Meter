@@ -3,6 +3,7 @@
 #include <Adafruit_ST7789.h>  // Hardware-specific library for ST7789
 #include <deque>
 #include <Fonts/FreeSansBold24pt7b.h>
+#include <Preferences.h>
 #include <SPI.h>
 
 // Pin numbers
@@ -15,12 +16,12 @@ constexpr static uint16_t displayHeight {135};
 Adafruit_INA219 ina219;
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 GFXcanvas16     canvas(displayWidth, displayHeight);  // Display resolution: displayWidthxdisplayHeight
+Preferences     preferences;
 
 enum MODE : uint8_t {
 	Current,
 	Voltage,
-	Power,
-	Detailed,
+	Power
 };
 
 struct colors {
@@ -36,7 +37,7 @@ constexpr static uint32_t longPressTime {2000};  // Long press time (to switch t
 constexpr static uint8_t  memorySize {80};       // Number of samples to keep
 constexpr static uint32_t windowTime {5000};     // History window time
 
-constexpr static uint16_t valueBaseline {55};   // Vertical coordinate of the value (0 - top)
+constexpr static uint16_t valueBaseline {56};   // Vertical coordinate of the value (0 - top)
 constexpr static uint16_t labelBaseline {110};  // Vertical coordinate of the label (0 - top)
 
 constexpr static colors
@@ -66,8 +67,14 @@ struct textCoords {
 static std::deque<measurement> prev;
 static uint32_t                startTime {0};
 static uint32_t                buttonPressTime {0};
+static float                   zeroCurrentOffset {0};
 constexpr static uint8_t       divisionWidth {displayWidth / memorySize};
 constexpr static uint32_t      stepTime {windowTime / memorySize};
+
+template <class T>
+T scale(T val, T minSrc, T maxSrc, T minTgt, T maxTgt) {
+	return (val - minSrc) * (maxTgt - minTgt) / (maxSrc - minSrc) + minTgt;
+}
 
 textCoords getTextCoords(Adafruit_GFX& gfx, const char* string, int16_t x, int16_t y) {
 	int16_t  x1, y1;
@@ -204,82 +211,47 @@ void drawPower(const measurement& max, const measurement& avg) {
 	}
 }
 
-void drawDetailed(const measurement& max, const measurement& avg) {
-	auto last {prev.back()};
-	char str[64] = {0};
-
-	canvas.setFont();
+void calibrate() {
 	canvas.fillScreen(0);
 
-	canvas.setCursor(0, 0);
-	canvas.setTextSize(3);
-	canvas.setTextColor(0xffe0);
-	canvas.print("Power meter");
+	while (abs(ina219.getCurrent_mA()) > 1) {
+		canvas.setFont(&FreeSansBold24pt7b);
 
-	canvas.setTextSize(1);
-	canvas.setCursor(0, 24);
+		printCentered(canvas, "Remove", valueBaseline, 0xf800);
+		printCentered(canvas, "load", labelBaseline, 0xf800);
 
-	canvas.setTextColor(0xf800, 0);
-	snprintf(str, 64, "Bus: %5.2fV, Avg: %5.2fV  ", last.busVoltage, avg.busVoltage);
-	canvas.println(str);
+		tft.drawRGBBitmap(0, 0, canvas.getBuffer(), canvas.width(), canvas.height());
 
-	canvas.setTextColor(0x07e0, 0);
-	snprintf(str, 64, "Current: %4.2fA, Avg: %4.2fA  ", last.current / 1000.0f, avg.current / 1000.0f);
-	canvas.println(str);
-
-	canvas.setTextColor(0xffe0, 0);
-	snprintf(str, 64, "Power: %5.2fW, Avg: %5.2fW  ", last.power / 1000.0f, avg.power / 1000.0f);
-	canvas.println(str);
-
-	canvas.setTextColor(0xffff, 0);
-	snprintf(str, 64, "Shunt: %5.2fmV, Avg: %5.2fmV  ", last.shuntVoltage, avg.shuntVoltage);
-	canvas.println(str);
-
-	snprintf(str, 64, "Supply: %5.2fV, Avg: %5.2fV  ", last.supplyVoltage, avg.supplyVoltage);
-	canvas.println(str);
-
-	float busVoltageScale = 70 / max.busVoltage;
-	float currentScale = 70 / max.current;
-	float powerScale = 70 / max.power;
-
-	for (uint8_t i {0}; i < prev.size() - 1; ++i) {
-		canvas.fillRect(divisionWidth * i, 64, divisionWidth, 71, 0);
-		canvas.drawLine(
-		    divisionWidth * i,
-		    displayHeight - prev[i].busVoltage * busVoltageScale,
-		    divisionWidth * (i + 1),
-		    displayHeight - prev[i + 1].busVoltage * busVoltageScale,
-		    0xf800
-		);
-		canvas.drawLine(
-		    divisionWidth * i,
-		    displayHeight - prev[i].current * currentScale,
-		    divisionWidth * (i + 1),
-		    displayHeight - prev[i + 1].current * currentScale,
-		    0x07e0
-		);
-		canvas.drawLine(
-		    divisionWidth * i,
-		    displayHeight - prev[i].power * powerScale,
-		    divisionWidth * (i + 1),
-		    displayHeight - prev[i + 1].power * powerScale,
-		    0xffe0
-		);
+		delay(10);
 	}
+
+	float avgCurrent = 0;
+
+	canvas.fillScreen(0);
+	for (uint8_t i {0}; i < 200; ++i) {
+		avgCurrent += (ina219.getCurrent_mA() - avgCurrent) / (i + 1);
+
+		printCentered(canvas, "Wait", 64, 0xffff);
+
+		canvas.drawRect(8, 96, displayWidth - 16, 8, 0xffff);
+		canvas.fillRect(8, 96, scale(static_cast<int>(i), 0, 200, 0, displayWidth - 16), 8, 0xffff);
+
+		tft.drawRGBBitmap(0, 0, canvas.getBuffer(), canvas.width(), canvas.height());
+	}
+
+	zeroCurrentOffset = avgCurrent;
+	preferences.putFloat("z", zeroCurrentOffset);
 }
 
-void (*drawFunctions[])(const measurement& max, const measurement& avg) =
-    {drawCurrent, drawVoltage, drawPower, drawDetailed};
+void (*drawFunctions[])(const measurement& max, const measurement& avg) = {drawCurrent, drawVoltage, drawPower};
 
 void Button_Handler() {
 	if (!digitalRead(BUTTON_PIN)) {
 		buttonPressTime = millis();
-	} else if (digitalRead(BUTTON_PIN)) {
-		if (mode < 3 || millis() - buttonPressTime < longPressTime) {
-			++mode;
-			if (mode > 2) {
-				mode = 0;
-			}
+	} else if (millis() - buttonPressTime < longPressTime) {
+		++mode;
+		if (mode > 2) {
+			mode = 0;
 		}
 	}
 }
@@ -301,6 +273,9 @@ void setup() {
 	tft.fillScreen(0);
 	tft.setTextWrap(true);
 
+	preferences.begin("pm", false);
+	zeroCurrentOffset = preferences.getFloat("z", 0);
+
 	if (!ina219.begin()) {
 		digitalWrite(LED_BUILTIN, HIGH);
 
@@ -320,18 +295,18 @@ void setup() {
 
 void loop() {
 	if (!digitalRead(BUTTON_PIN) && millis() - buttonPressTime > longPressTime) {
-		mode = 3;
+		calibrate();
 	}
 
 	measurement curr {
 	  .busVoltage = ina219.getBusVoltage_V(),
-	  .current = ina219.getCurrent_mA(),
+	  .current = ina219.getCurrent_mA() - zeroCurrentOffset,
 	  .shuntVoltage = ina219.getShuntVoltage_mV()
 	};
 
 	for (unsigned i {0}; millis() - startTime < stepTime; ++i) {
 		curr.busVoltage += (ina219.getBusVoltage_V() - curr.busVoltage) / (i + 1);
-		curr.current += (ina219.getCurrent_mA() - curr.current) / (i + 1);
+		curr.current += (ina219.getCurrent_mA() - zeroCurrentOffset - curr.current) / (i + 1);
 		curr.shuntVoltage += (ina219.getShuntVoltage_mV() - curr.shuntVoltage) / (i + 1);
 	};
 	startTime = millis();
