@@ -85,21 +85,21 @@ void printCentered(Adafruit_GFX& gfx, const char* string, int16_t baseline, uint
 }
 
 void drawCurrent(const measurement& max, const measurement& avg) {
-	float scale = displayHeight / max.current;
+	float scale = displayHeight / abs(max.current);
 	canvas.fillScreen(currentColors.bgColor);
 
 	for (uint8_t i {0}; i < prev.size() - 1; ++i) {
-		bool    up = prev[i].current < prev[i + 1].current;
-		uint8_t minCoord = displayHeight - (up ? prev[i].current : prev[i + 1].current) * scale;
+		bool    up = abs(prev[i].current) < abs(prev[i + 1].current);
+		uint8_t minCoord = displayHeight - (abs(up ? prev[i].current : prev[i + 1].current)) * scale;
 
 		if (max.current) {
 			canvas.fillRect(divisionWidth * i, minCoord, divisionWidth, displayHeight, currentColors.fillColor);
 
 			canvas.fillTriangle(
 			    divisionWidth * i,
-			    displayHeight - prev[i].current * scale,
+			    displayHeight - abs(prev[i].current) * scale,
 			    divisionWidth * (i + 1),
-			    displayHeight - prev[i + 1].current * scale,
+			    displayHeight - abs(prev[i + 1].current) * scale,
 			    up ? divisionWidth * (i + 1) : divisionWidth * i,
 			    minCoord,
 			    currentColors.fillColor
@@ -112,9 +112,9 @@ void drawCurrent(const measurement& max, const measurement& avg) {
 	{
 		char str[16] = {};
 
-		if (avg.current < 100) {
+		if (abs(avg.current) < 100) {
 			snprintf(str, 16, "%4.2fmA", avg.current);
-		} else if (avg.current > 1000) {
+		} else if (abs(avg.current) > 1000) {
 			snprintf(str, 16, "%5.2fA", avg.current / 1000.0f);
 		} else {
 			snprintf(str, 16, "%dmA", static_cast<int>(avg.current));
@@ -152,9 +152,9 @@ void drawVoltage(const measurement& max, const measurement& avg) {
 	{
 		char str[16] = {};
 
-		if (avg.busVoltage < 0.1f) {
+		if (abs(avg.busVoltage) < 0.1f) {
 			snprintf(str, 16, "%4.2fmV", avg.busVoltage * 1000);
-		} else if (avg.busVoltage < 1) {
+		} else if (abs(avg.busVoltage) < 1) {
 			snprintf(str, 16, "%dmV", static_cast<unsigned>(avg.busVoltage * 1000));
 		} else {
 			snprintf(str, 16, "%5.2fV", avg.busVoltage);
@@ -165,21 +165,21 @@ void drawVoltage(const measurement& max, const measurement& avg) {
 }
 
 void drawPower(const measurement& max, const measurement& avg) {
-	float scale = displayHeight / max.power;
+	float scale = displayHeight / abs(max.power);
 	canvas.fillScreen(powerColors.bgColor);
 
 	for (uint8_t i {0}; i < prev.size() - 1; ++i) {
-		bool    up = prev[i].power < prev[i + 1].power;
-		uint8_t minCoord = displayHeight - (up ? prev[i].power : prev[i + 1].power) * scale;
+		bool    up = abs(prev[i].power) < abs(prev[i + 1].power);
+		uint8_t minCoord = displayHeight - (abs(up ? prev[i].power : prev[i + 1].power)) * scale;
 
 		if (max.power) {
 			canvas.fillRect(divisionWidth * i, minCoord, divisionWidth, displayHeight, powerColors.fillColor);
 
 			canvas.fillTriangle(
 			    divisionWidth * i,
-			    displayHeight - prev[i].power * scale,
+			    displayHeight - abs(prev[i].power) * scale,
 			    divisionWidth * (i + 1),
-			    displayHeight - prev[i + 1].power * scale,
+			    displayHeight - abs(prev[i + 1].power) * scale,
 			    up ? divisionWidth * (i + 1) : divisionWidth * i,
 			    minCoord,
 			    powerColors.fillColor
@@ -192,9 +192,9 @@ void drawPower(const measurement& max, const measurement& avg) {
 	{
 		char str[16] = {};
 
-		if (avg.power < 100) {
+		if (abs(avg.power) < 100) {
 			snprintf(str, 16, "%4.2fmW", avg.power);
-		} else if (avg.power > 1000) {
+		} else if (abs(avg.power) > 1000) {
 			snprintf(str, 16, "%5.2fW", avg.power / 1000.0f);
 		} else {
 			snprintf(str, 16, "%dmW", static_cast<unsigned>(avg.power));
@@ -336,16 +336,6 @@ void loop() {
 	};
 	startTime = millis();
 
-	if (curr.busVoltage < 0.05f) {
-		curr.busVoltage = 0;
-	}
-	if (curr.current < 0.01f) {
-		curr.current = 0;
-	}
-	if (curr.shuntVoltage < 0) {
-		curr.shuntVoltage = 0;
-	}
-
 	curr.supplyVoltage = curr.busVoltage + (curr.shuntVoltage / 1000.0f);
 	curr.power = curr.busVoltage * curr.current;
 
@@ -372,20 +362,20 @@ void loop() {
 	measurement avg {};
 
 	for (uint8_t i {0}; i < prev.size(); ++i) {
-		if (prev[i].busVoltage > max.busVoltage) {
-			max.busVoltage = prev[i].busVoltage;
+		if (abs(prev[i].busVoltage) > max.busVoltage) {
+			max.busVoltage = abs(prev[i].busVoltage);
 		}
-		if (prev[i].current > max.current) {
-			max.current = prev[i].current;
+		if (abs(prev[i].current) > max.current) {
+			max.current = abs(prev[i].current);
 		}
-		if (prev[i].power > max.power) {
-			max.power = prev[i].power;
+		if (abs(prev[i].power) > max.power) {
+			max.power = abs(prev[i].power);
 		}
-		if (prev[i].shuntVoltage > max.shuntVoltage) {
-			max.shuntVoltage = prev[i].shuntVoltage;
+		if (abs(prev[i].shuntVoltage) > max.shuntVoltage) {
+			max.shuntVoltage = abs(prev[i].shuntVoltage);
 		}
-		if (prev[i].supplyVoltage > max.supplyVoltage) {
-			max.supplyVoltage = prev[i].supplyVoltage;
+		if (abs(prev[i].supplyVoltage) > max.supplyVoltage) {
+			max.supplyVoltage = abs(prev[i].supplyVoltage);
 		}
 
 		avg.busVoltage += (prev[i].busVoltage - avg.busVoltage) / (i + 1);
